@@ -28,7 +28,7 @@ async def scrape_single_profile_debug(url: str, output_file: str = None):
     print()
 
     # Initialize scraper with debugging enabled
-    scraper = LinkedInScraperV2(headless=False, debug=True)  # Always visible for debugging
+    scraper = LinkedInScraperV2(headless=True, debug=True)  # Headless for server environment
 
     try:
         await scraper.initialize()
