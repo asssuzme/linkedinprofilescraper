@@ -30,7 +30,7 @@ echo ""
 # Setup configuration
 if [ ! -f .env ]; then
     echo "→ Creating .env configuration file..."
-    cp .env.example .env
+    cp env.example .env
     echo "  ✓ .env file created"
     echo ""
     echo "⚠️  IMPORTANT: Edit .env and add your LinkedIn credentials!"

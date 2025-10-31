@@ -112,18 +112,26 @@ class LinkedInScraper:
             raise FileNotFoundError(f"Cookies file not found: {cookies_path}")
 
         with open(cookies_file, 'r') as f:
-            cookies = json.load(f)
+            raw_cookies = json.load(f)
+
+        # Normalize cookies for both domains to reduce redirect loops
+        cookies = []
+        for c in raw_cookies:
+            cookies.append(c)
+            domain = (c.get('domain') or '').lower()
+            if domain == '.linkedin.com':
+                dup = dict(c)
+                dup['domain'] = '.www.linkedin.com'
+                cookies.append(dup)
+            elif domain == '.www.linkedin.com':
+                dup = dict(c)
+                dup['domain'] = '.linkedin.com'
+                cookies.append(dup)
 
         await self.context.add_cookies(cookies)
 
-        # Navigate to LinkedIn to verify cookies
-        await self.page.goto('https://www.linkedin.com/feed/', wait_until='networkidle')
-        await asyncio.sleep(2)
-
-        if 'login' in self.page.url:
-            raise Exception("Cookies are invalid or expired")
-
-        print("✓ Successfully authenticated with cookies")
+        # Do not navigate to /feed here (can cause redirect loops). We'll verify lazily.
+        print("✓ Cookies loaded")
 
     async def save_cookies(self):
         """Save current cookies to file"""
@@ -256,12 +264,17 @@ class LinkedInScraper:
                 data['addressCountryOnly'] = ""
                 data['addressWithoutCountry'] = ""
 
-            # Connections and Followers
-            connections_text = await self.page.inner_text('li.text-body-small:has-text("connection")', timeout=5000)
-            data['connections'] = parse_connections_count(connections_text) if connections_text else 0
+            # Connections and Followers (avoid hard timeouts on inner_text)
+            try:
+                connections_elem = await self.page.query_selector('li.text-body-small:has-text("connection")')
+                connections_text = extract_text(connections_elem)
+                data['connections'] = parse_connections_count(connections_text) if connections_text else 0
+            except:
+                data['connections'] = 0
 
             try:
-                followers_text = await self.page.inner_text('li.text-body-small:has-text("follower")', timeout=5000)
+                followers_elem = await self.page.query_selector('li.text-body-small:has-text("follower")')
+                followers_text = extract_text(followers_elem)
                 data['followers'] = parse_connections_count(followers_text) if followers_text else 0
             except:
                 data['followers'] = 0

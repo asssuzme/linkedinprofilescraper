@@ -18,7 +18,7 @@ setup: install
 	playwright install chromium
 	@echo ""
 	@echo "Setup complete! Next steps:"
-	@echo "1. Copy .env.example to .env"
+	@echo "1. Copy env.example to .env"
 	@echo "2. Edit .env with your LinkedIn credentials"
 	@echo "3. Run 'make run' to test"
 
