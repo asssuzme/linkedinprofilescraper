@@ -28,7 +28,7 @@ async def scrape_single_profile_debug(url: str, output_file: str = None):
     print()
 
     # Initialize scraper with debugging enabled
-    scraper = LinkedInScraperV2(headless=True, debug=True)  # Headless for server environment
+    scraper = LinkedInScraperV2(headless=Config.HEADLESS, debug=True)
 
     try:
         await scraper.initialize()
@@ -38,12 +38,17 @@ async def scrape_single_profile_debug(url: str, output_file: str = None):
             print(f"Authenticating with cookies from: {Config.LINKEDIN_COOKIES}")
             await scraper.login_with_cookies(Config.LINKEDIN_COOKIES)
         elif Config.LINKEDIN_EMAIL and Config.LINKEDIN_PASSWORD:
-            print("Cookie file not found, but email/password auth not implemented in V2 yet")
-            print("Please provide valid cookies")
+            print("\n❌ cookies.json not found!")
+            print("\n💡 To create cookies, run v1 scraper once:")
+            print(f'   python main.py -u "{url}" -o output/seed.json')
+            print("\n   This will log in with credentials and save cookies.json")
+            print("   Then re-run this v2 scraper.")
             return None
         else:
             print("❌ No authentication method configured!")
-            print("Please set LINKEDIN_COOKIES in .env file")
+            print("\n💡 Please either:")
+            print("   1. Set LINKEDIN_EMAIL and LINKEDIN_PASSWORD in .env")
+            print("   2. Or manually export cookies.json from your browser")
             return None
 
         print(f"\nScraping profile: {url}\n")

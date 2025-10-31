@@ -11,7 +11,7 @@ from datetime import datetime
 
 from config import Config
 from parsers import (
-    extract_text, extract_attribute, parse_duration_to_years,
+    extract_text_async, extract_attribute_async, parse_duration_to_years,
     parse_connections_count, extract_company_id, clean_url,
     normalize_linkedin_url, extract_email_from_text, extract_phone_from_text,
     split_name
@@ -50,14 +50,11 @@ class LinkedInScraperV2:
 
         launch_options = {
             'headless': self.headless,
-            'executable_path': '/root/.cache/ms-playwright/chromium_headless_shell-1194/chrome-linux/headless_shell',
             'args': [
                 '--disable-blink-features=AutomationControlled',
                 '--disable-dev-shm-usage',
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
-                '--disable-web-security',
-                '--disable-features=IsolateOrigins,site-per-process',
             ]
         }
 
@@ -116,8 +113,8 @@ class LinkedInScraperV2:
 
         # Test authentication by visiting feed
         self.log("Testing authentication...")
-        await self.page.goto('https://www.linkedin.com/feed/', wait_until='domcontentloaded', timeout=30000)
-        await asyncio.sleep(3)
+        await self.page.goto('https://www.linkedin.com/feed/', wait_until='domcontentloaded', timeout=45000)
+        await asyncio.sleep(2)
 
         await self.screenshot("after_cookie_login")
 
@@ -126,9 +123,37 @@ class LinkedInScraperV2:
         self.log(f"Current URL after cookie load: {current_url}")
 
         if 'login' in current_url or 'authwall' in current_url:
-            raise Exception("Cookies are invalid or expired - LinkedIn is showing login page")
+            print("\n❌ Cookies are invalid or expired!")
+            print("📸 Screenshot saved: screenshots/after_cookie_login_*.png")
+            print("\n💡 To fix:")
+            print("   1. If cookies.json doesn't exist or is old, run v1 to seed fresh cookies:")
+            print("      python main.py -u <profile> -o output/seed.json")
+            print("   2. Or export fresh cookies from your browser using Cookie-Editor extension")
+            raise Exception("Authentication failed - please refresh cookies")
 
         self.log("✓ Successfully authenticated with cookies")
+
+    async def _try_click_consent_button(self):
+        """Try to click consent/accept/continue buttons if present"""
+        if self.headless:
+            return  # Skip in headless mode
+
+        button_selectors = [
+            'button:has-text("Accept")',
+            'button:has-text("Continue")',
+            'button:has-text("Sign in")',
+            'button[aria-label*="Accept"]',
+        ]
+        for selector in button_selectors:
+            try:
+                btn = await self.page.query_selector(selector)
+                if btn:
+                    self.log(f"Clicking consent button: {selector}")
+                    await btn.click()
+                    await asyncio.sleep(2)
+                    return
+            except:
+                continue
 
     async def scrape_profile(self, profile_url: str) -> Dict[str, Any]:
         """Scrape profile with better error handling and multiple selector fallbacks"""
@@ -141,20 +166,47 @@ class LinkedInScraperV2:
         # Navigate to profile
         self.log("Navigating to profile...")
         try:
-            await self.page.goto(profile_url, wait_until='domcontentloaded', timeout=30000)
-            await asyncio.sleep(3)
+            await self.page.goto(profile_url, wait_until='domcontentloaded', timeout=45000)
+            await asyncio.sleep(2)
         except Exception as e:
             self.log(f"Navigation error: {e}")
             await self.screenshot("navigation_error")
             raise
 
+        # Check for auth wall and try consent
+        if 'authwall' in self.page.url or 'login' in self.page.url:
+            self.log("⚠️  Hit authentication wall, trying consent button...")
+            await self.screenshot("authwall_before")
+            await self._try_click_consent_button()
+
+            # Retry navigation once
+            try:
+                await self.page.goto(profile_url, wait_until='domcontentloaded', timeout=45000)
+                await asyncio.sleep(2)
+            except:
+                pass
+
         await self.screenshot("profile_loaded")
 
         # Check if we hit an auth wall
         if 'authwall' in self.page.url or 'login' in self.page.url:
-            self.log("⚠️  Hit authentication wall - cookies may be expired")
             await self.screenshot("authwall")
-            raise Exception("Authentication required - please refresh cookies")
+            print("\n❌ Still hitting authentication wall!")
+            print("📸 Screenshot saved: screenshots/authwall_*.png")
+            print("\n💡 This profile may be gated or cookies expired.")
+            print("   Try running with HEADLESS=false to manually accept consent.")
+            raise Exception("Profile gated or authentication required")
+
+        # Wait for a key top-card element to ensure page loaded
+        self.log("Waiting for profile top card...")
+        top_card_selectors = ['h1.text-heading-xlarge', 'h1', '.pv-text-details__left-panel']
+        for selector in top_card_selectors:
+            try:
+                await self.page.wait_for_selector(selector, timeout=10000, state='attached')
+                self.log(f"✓ Found top card element: {selector}")
+                break
+            except:
+                continue
 
         # Scroll to load dynamic content
         self.log("Scrolling to load content...")
@@ -234,13 +286,21 @@ class LinkedInScraperV2:
         data = {}
 
         try:
+            # Expand "Show more" / "See more" in About section
+            try:
+                see_more_btn = await self.page.query_selector('button:has-text("more")')
+                if see_more_btn:
+                    await see_more_btn.click()
+                    await asyncio.sleep(0.5)
+            except:
+                pass
+
             # Full name - try multiple selectors
             name_selectors = [
                 'h1.text-heading-xlarge',
-                'h1[class*="text-heading"]',
+                'h1',
                 '.pv-text-details__left-panel h1',
-                'section.top-card h1',
-                'div[data-section="profile-top-card"] h1',
+                'div.ph5 h1',
             ]
 
             full_name = ""
@@ -248,7 +308,7 @@ class LinkedInScraperV2:
                 try:
                     elem = await self.page.query_selector(selector)
                     if elem:
-                        full_name = extract_text(elem)
+                        full_name = await extract_text_async(elem)
                         if full_name:
                             self.log(f"Found name with selector: {selector}")
                             break
@@ -263,9 +323,8 @@ class LinkedInScraperV2:
             # Headline - multiple selectors
             headline_selectors = [
                 'div.text-body-medium.break-words',
-                'div[class*="text-body-medium"]',
-                '.pv-text-details__left-panel .text-body-medium',
-                'section.top-card div[class*="text-body"]',
+                'div.text-body-medium',
+                '.pv-text-details__left-panel div.text-body-medium',
             ]
 
             headline = ""
@@ -273,7 +332,7 @@ class LinkedInScraperV2:
                 try:
                     elem = await self.page.query_selector(selector)
                     if elem:
-                        headline = extract_text(elem)
+                        headline = await extract_text_async(elem)
                         if headline and headline != full_name:  # Make sure it's not the name
                             self.log(f"Found headline with selector: {selector}")
                             break
@@ -285,9 +344,8 @@ class LinkedInScraperV2:
             # Location - multiple selectors
             location_selectors = [
                 'span.text-body-small.inline.t-black--light.break-words',
-                'span[class*="text-body-small"]',
-                '.pv-text-details__left-panel span.text-body-small',
-                'section.top-card span[class*="text-body-small"]',
+                'span.text-body-small',
+                'div.ph5 span.text-body-small',
             ]
 
             location = ""
@@ -295,7 +353,7 @@ class LinkedInScraperV2:
                 try:
                     elem = await self.page.query_selector(selector)
                     if elem:
-                        location = extract_text(elem)
+                        location = await extract_text_async(elem)
                         if location and ',' in location:  # Locations usually have commas
                             self.log(f"Found location with selector: {selector}")
                             break
@@ -321,18 +379,30 @@ class LinkedInScraperV2:
             data['followers'] = 0
 
             try:
-                # Try to find connection count
-                conn_text = await self.page.inner_text('li:has-text("connection")', timeout=2000)
-                data['connections'] = parse_connections_count(conn_text)
-                self.log(f"Found connections: {data['connections']}")
+                # Try multiple ways to find connections
+                conn_elems = await self.page.query_selector_all('span.t-black--light span.t-bold')
+                for elem in conn_elems:
+                    text = await extract_text_async(elem)
+                    if text and ('connection' in text.lower() or text.replace(',', '').isdigit()):
+                        count = parse_connections_count(text)
+                        if count > 0:
+                            data['connections'] = count
+                            self.log(f"Found connections: {count}")
+                            break
             except:
                 pass
 
             try:
-                # Try to find follower count
-                follower_text = await self.page.inner_text('li:has-text("follower")', timeout=2000)
-                data['followers'] = parse_connections_count(follower_text)
-                self.log(f"Found followers: {data['followers']}")
+                # Try to find followers
+                follower_elems = await self.page.query_selector_all('span.t-black--light span.t-bold')
+                for elem in follower_elems:
+                    text = await extract_text_async(elem)
+                    if text and 'follower' in text.lower():
+                        count = parse_connections_count(text)
+                        if count > 0:
+                            data['followers'] = count
+                            self.log(f"Found followers: {count}")
+                            break
             except:
                 pass
 

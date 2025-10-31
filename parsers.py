@@ -5,8 +5,19 @@ import re
 from typing import Any, Dict, List, Optional
 
 
+async def extract_text_async(element) -> str:
+    """Safely extract text from a Playwright element handle (async)"""
+    if element is None:
+        return ""
+    try:
+        text = await element.text_content()
+        return text.strip() if text else ""
+    except:
+        return ""
+
+
 def extract_text(element) -> str:
-    """Safely extract text from an element"""
+    """Safely extract text from an element (sync - for backwards compatibility)"""
     if element is None:
         return ""
     try:
@@ -15,8 +26,19 @@ def extract_text(element) -> str:
         return ""
 
 
+async def extract_attribute_async(element, attr: str) -> str:
+    """Safely extract attribute from a Playwright element handle (async)"""
+    if element is None:
+        return ""
+    try:
+        val = await element.get_attribute(attr)
+        return val if val else ""
+    except:
+        return ""
+
+
 def extract_attribute(element, attr: str) -> str:
-    """Safely extract attribute from an element"""
+    """Safely extract attribute from an element (sync - for backwards compatibility)"""
     if element is None:
         return ""
     try:
