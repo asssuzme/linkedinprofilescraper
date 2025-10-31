@@ -35,36 +35,19 @@ class LinkedInCrawleeScraper:
             raise FileNotFoundError(f"Cookies file not found: {self.cookies_file}")
 
         with open(self.cookies_file, 'r') as f:
-            cookies = json.load(f)
+            self.cookies = json.load(f)
 
-        print(f"✓ Loaded {len(cookies)} cookies")
+        print(f"✓ Loaded {len(self.cookies)} cookies")
         print(f"✓ Profiles to scrape: {len(profile_urls)}\n")
 
         # Create crawler with better config
         crawler = PlaywrightCrawler(
-            headless=False,  # Visible browser for debugging
+            headless=True,  # Headless for server environment
             browser_type="chromium",
             max_requests_per_crawl=len(profile_urls),
             max_request_retries=2,
             request_handler=self._create_handler(),
         )
-
-        # Configure browser launch options
-        crawler.playwright_crawler_options.update({
-            "launch_options": {
-                "args": [
-                    "--disable-blink-features=AutomationControlled",
-                    "--disable-dev-shm-usage",
-                    "--no-sandbox",
-                ]
-            }
-        })
-
-        # Add cookies to all requests
-        async def add_cookies(context):
-            await context.add_cookies(cookies)
-
-        crawler.browser_pool.pre_navigation_hooks.append(add_cookies)
 
         # Create requests
         requests = [Request.from_url(url) for url in profile_urls]
@@ -88,6 +71,9 @@ class LinkedInCrawleeScraper:
             print(f"{'─'*70}")
 
             try:
+                # Add cookies to the browser context
+                await context.page.context.add_cookies(self.cookies)
+
                 # Wait for page to load
                 await page.wait_for_load_state('domcontentloaded')
                 await asyncio.sleep(2)
