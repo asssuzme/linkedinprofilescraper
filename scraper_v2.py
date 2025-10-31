@@ -50,7 +50,6 @@ class LinkedInScraperV2:
 
         launch_options = {
             'headless': self.headless,
-            'executable_path': '/root/.cache/ms-playwright/chromium_headless_shell-1194/chrome-linux/headless_shell',
             'args': [
                 '--disable-blink-features=AutomationControlled',
                 '--disable-dev-shm-usage',
@@ -60,6 +59,22 @@ class LinkedInScraperV2:
                 '--disable-features=IsolateOrigins,site-per-process',
             ]
         }
+
+        # Resolve Chromium path on macOS if provided via env or default cache
+        import os, platform
+        browsers_path = os.environ.get('PLAYWRIGHT_BROWSERS_PATH')
+        if not browsers_path and platform.system() == 'Darwin':
+            browsers_path = os.path.expanduser('~/Library/Caches/ms-playwright')
+        if browsers_path and platform.system() == 'Darwin':
+            # Try common installed folder name pattern
+            try:
+                from glob import glob
+                candidates = glob(os.path.join(browsers_path, 'chromium-*', 'Chromium.app', 'Contents', 'MacOS', 'Chromium'))
+                if candidates:
+                    launch_options['executable_path'] = candidates[0]
+                    self.log(f"Using Chromium binary: {launch_options['executable_path']}")
+            except Exception as _:
+                pass
 
         proxy_config = Config.get_proxy_config()
         if proxy_config:
