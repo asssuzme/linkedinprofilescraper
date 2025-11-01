@@ -171,10 +171,54 @@ class LinkedInScraperV2:
             await self.screenshot("authwall")
             raise Exception("Authentication required - please refresh cookies")
 
-        # Scroll to load dynamic content
-        self.log("Scrolling to load content...")
-        await self._scroll_page()
-        await self.screenshot("after_scroll")
+        # Scroll to load dynamic content with human-like behavior
+        self.log("Scrolling to load content (human-like pattern)...")
+
+        # Multiple scroll attempts with varying speeds
+        for i in range(5):
+            scroll_pos = 300 * (i + 1)
+            await self.page.evaluate(f'window.scrollTo(0, {scroll_pos})')
+            await asyncio.sleep(0.5 + (i * 0.3))  # Increasing delays
+
+        await self.screenshot("after_initial_scroll")
+
+        # Scroll to bottom
+        await self.page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
+        await asyncio.sleep(3)
+
+        # Try clicking any "Show more" or "Show all" buttons
+        self.log("Looking for and clicking expand buttons...")
+        try:
+            buttons = await self.page.query_selector_all('button')
+            for btn in buttons[:10]:  # Check first 10 buttons
+                text = await extract_text(btn)
+                if text and ('show' in text.lower() or 'more' in text.lower() or 'all' in text.lower()):
+                    self.log(f"Clicking button: {text}")
+                    try:
+                        await btn.click()
+                        await asyncio.sleep(1)
+                    except:
+                        pass
+        except Exception as e:
+            self.log(f"Button clicking failed: {e}")
+
+        # Wait for network to be idle
+        self.log("Waiting for network to be idle...")
+        try:
+            await self.page.wait_for_load_state('networkidle', timeout=15000)
+            self.log("✓ Network is idle")
+        except:
+            self.log("⚠️ Network didn't go idle, continuing anyway")
+
+        await self.screenshot("after_button_clicks")
+
+        # Scroll back to top slowly (triggers lazy load)
+        for i in range(5):
+            offset = 300 * (i + 1)
+            await self.page.evaluate(f'window.scrollTo(0, Math.max(0, document.body.scrollHeight - {offset}))')
+            await asyncio.sleep(0.4)
+
+        await asyncio.sleep(2)
 
         # Wait for skeleton loaders to disappear and content to load
         self.log("Waiting for content to finish loading...")
