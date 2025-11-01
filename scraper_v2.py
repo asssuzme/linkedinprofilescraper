@@ -176,6 +176,32 @@ class LinkedInScraperV2:
         await self._scroll_page()
         await self.screenshot("after_scroll")
 
+        # Wait for skeleton loaders to disappear and content to load
+        self.log("Waiting for content to finish loading...")
+        try:
+            # Wait for skeleton loaders to disappear (they have class "skeleton")
+            await self.page.wait_for_function(
+                '''() => {
+                    const skeletons = document.querySelectorAll('[class*="skeleton"]');
+                    return skeletons.length === 0 ||
+                           Array.from(skeletons).every(s => s.offsetParent === null);
+                }''',
+                timeout=10000
+            )
+            self.log("✓ Skeleton loaders disappeared")
+        except:
+            self.log("⚠️ Timeout waiting for skeletons to disappear, continuing anyway")
+
+        # Additional wait and scroll to trigger lazy load
+        await asyncio.sleep(3)
+        await self.page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
+        await asyncio.sleep(2)
+        await self.page.evaluate('window.scrollTo(0, 0)')
+        await asyncio.sleep(1)
+
+        await self.screenshot("content_loaded")
+        self.log("✓ Content should be loaded now")
+
         # Extract data with multiple fallbacks
         profile_data = {'linkedinUrl': profile_url}
 
