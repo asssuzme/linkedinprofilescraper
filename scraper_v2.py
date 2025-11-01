@@ -7,6 +7,7 @@ import re
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 from playwright.async_api import async_playwright, Page, Browser, BrowserContext
+from playwright_stealth import Stealth
 from datetime import datetime
 
 from config import Config
@@ -95,9 +96,13 @@ class LinkedInScraperV2:
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
         })
 
+        # Apply playwright-stealth to context before creating page
+        stealth_config = Stealth()
+        await stealth_config.apply_stealth_async(self.context)
+
         self.page = await self.context.new_page()
 
-        # Enhanced anti-detection
+        # Enhanced anti-detection (additional layer)
         await self.page.add_init_script("""
             Object.defineProperty(navigator, 'webdriver', {
                 get: () => undefined
@@ -111,7 +116,7 @@ class LinkedInScraperV2:
             window.chrome = { runtime: {} };
         """)
 
-        self.log("Browser initialized")
+        self.log("Browser initialized with stealth mode")
 
     async def login_with_cookies(self, cookies_path: str):
         """Login using saved cookies with better error handling"""
@@ -628,7 +633,31 @@ class LinkedInScraperV2:
 
             # Navigate to detail page
             await self.page.goto(detail_url, wait_until='domcontentloaded', timeout=30000)
-            await asyncio.sleep(3)  # Wait for content to load
+            await asyncio.sleep(2)
+
+            # Check if we got redirected or blocked
+            current_url = self.page.url
+            if 'details/' not in current_url:
+                self.log(f"⚠️ Got redirected to: {current_url}")
+                self.log("Detail page might be unavailable - trying with longer wait")
+
+            # Wait for any content to start rendering
+            try:
+                # Wait for main or body content
+                await self.page.wait_for_selector('body', timeout=5000)
+                await asyncio.sleep(3)
+            except:
+                pass
+
+            # Perform human-like scrolling to trigger lazy loading
+            self.log("Scrolling to load all content...")
+            try:
+                await self._scroll_page()
+            except Exception as e:
+                self.log(f"Scroll error (continuing): {e}")
+
+            # Wait for content to stabilize
+            await asyncio.sleep(5)
 
             await self.screenshot("experience_detail_page")
 
@@ -669,15 +698,16 @@ class LinkedInScraperV2:
             }''')
 
             self.log("=== EXPERIENCE DETAIL PAGE HTML DEBUG ===")
+            self.log(f"Current URL: {self.page.url}")
             self.log(f"Selector counts: {html_debug['selectorCounts']}")
             self.log(f"Total <li> elements: {html_debug['totalLis']}")
+            self.log(f"Body text preview: {html_debug.get('bodyText', '')[:300]}")
             self.log(f"First <li> sample structure:")
-            for i, sample in enumerate(html_debug.get('sampleStructures', [])[:1]):
+            for i, sample in enumerate(html_debug.get('sampleStructures', [])[:3]):
                 self.log(f"  LI #{i+1}:")
                 self.log(f"    Class: {sample['className']}")
                 self.log(f"    ID: {sample['id']}")
                 self.log(f"    Text: {sample['textContent'][:150]}")
-                self.log(f"    HTML: {sample['innerHTML'][:200]}")
             self.log("==========================================")
 
             # On detail pages, LinkedIn renders full content
@@ -820,7 +850,31 @@ class LinkedInScraperV2:
 
             # Navigate to detail page
             await self.page.goto(detail_url, wait_until='domcontentloaded', timeout=30000)
-            await asyncio.sleep(3)
+            await asyncio.sleep(2)
+
+            # Check if we got redirected or blocked
+            current_url = self.page.url
+            if 'details/' not in current_url:
+                self.log(f"⚠️ Got redirected to: {current_url}")
+                self.log("Detail page might be unavailable - trying with longer wait")
+
+            # Wait for any content to start rendering
+            try:
+                # Wait for main or body content
+                await self.page.wait_for_selector('body', timeout=5000)
+                await asyncio.sleep(3)
+            except:
+                pass
+
+            # Perform human-like scrolling to trigger lazy loading
+            self.log("Scrolling to load all content...")
+            try:
+                await self._scroll_page()
+            except Exception as e:
+                self.log(f"Scroll error (continuing): {e}")
+
+            # Wait for content to stabilize
+            await asyncio.sleep(5)
 
             await self.screenshot("education_detail_page")
 
@@ -1003,7 +1057,31 @@ class LinkedInScraperV2:
 
             # Navigate to detail page
             await self.page.goto(detail_url, wait_until='domcontentloaded', timeout=30000)
-            await asyncio.sleep(3)
+            await asyncio.sleep(2)
+
+            # Check if we got redirected or blocked
+            current_url = self.page.url
+            if 'details/' not in current_url:
+                self.log(f"⚠️ Got redirected to: {current_url}")
+                self.log("Detail page might be unavailable - trying with longer wait")
+
+            # Wait for any content to start rendering
+            try:
+                # Wait for main or body content
+                await self.page.wait_for_selector('body', timeout=5000)
+                await asyncio.sleep(3)
+            except:
+                pass
+
+            # Perform human-like scrolling to trigger lazy loading
+            self.log("Scrolling to load all content...")
+            try:
+                await self._scroll_page()
+            except Exception as e:
+                self.log(f"Scroll error (continuing): {e}")
+
+            # Wait for content to stabilize
+            await asyncio.sleep(5)
 
             await self.screenshot("skills_detail_page")
 
