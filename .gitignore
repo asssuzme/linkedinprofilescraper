@@ -16,3 +16,5 @@ output/
 playwright-state/
 screenshots/
 .DS_Store
+storage/
+*.pyc
