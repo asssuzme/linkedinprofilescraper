@@ -234,21 +234,30 @@ class LinkedInScraperV2:
         # DEBUG: Check if Experience section exists in DOM
         try:
             exp_debug = await self.page.evaluate('''() => {
-                const text = document.body.textContent;
-                if (text.includes('Experience')) {
-                    // Find all section/div elements
-                    const sections = Array.from(document.querySelectorAll('section, div')).filter(el => {
+                const text = document.body.textContent || '';
+                const hasExperienceText = text.includes('Experience');
+                
+                if (hasExperienceText) {
+                    // Find ALL sections/divs that contain the word "Experience"
+                    const allElements = Array.from(document.querySelectorAll('section, div'));
+                    const experienceElements = allElements.filter(el => {
                         const txt = el.textContent || '';
-                        return txt.includes('GigFloww') || txt.includes('Co-Founder');
+                        return txt.includes('Experience') && txt.length > 10;
                     });
-                    if (sections.length > 0) {
-                        const first = sections[0];
-                        return `Found ${sections.length} elements with experience content. First element tag: ${first.tagName}, classes: ${first.className}, id: ${first.id}`;
+                    
+                    if (experienceElements.length > 0) {
+                        const results = experienceElements.slice(0, 3).map((el, idx) => {
+                            const txt = el.textContent || '';
+                            const preview = txt.substring(0, 100).replace(/\\s+/g, ' ');
+                            return `[${idx + 1}] tag: ${el.tagName}, classes: "${el.className}", id: "${el.id}", preview: "${preview}..."`;
+                        });
+                        return `Found ${experienceElements.length} elements containing "Experience". First 3:\\n${results.join('\\n')}`;
                     }
+                    return `Experience text found in page but no elements contain it. Total text length: ${text.length}`;
                 }
-                return "Experience section not found";
+                return "Experience section not found - no Experience text in page";
             }''')
-            self.log(f"DEBUG - Experience section: {exp_debug}")
+            self.log(f"DEBUG - Experience section:\\n{exp_debug}")
         except Exception as e:
             self.log(f"DEBUG - Experience search failed: {e}")
 
@@ -262,18 +271,24 @@ class LinkedInScraperV2:
         # DEBUG: Check if Skills section exists in DOM
         try:
             skills_debug = await self.page.evaluate('''() => {
-                const text = document.body.textContent;
-                if (text.includes('Skills') || text.includes('Human Resources')) {
-                    const sections = Array.from(document.querySelectorAll('section, div')).filter(el => {
+                const text = document.body.textContent || '';
+                const hasSkillsText = text.includes('Skills') || text.includes('Endorsements');
+                
+                if (hasSkillsText) {
+                    // Find all section/div elements that might contain skills
+                    const sections = Array.from(document.querySelectorAll('section, div[id*="skill"], section[data-section*="skill"]')).filter(el => {
                         const txt = el.textContent || '';
-                        return txt.includes('Human Resources') || txt.includes('Online Lead Generation');
+                        // Look for skills indicators: multiple short text items (skill names)
+                        const words = txt.split(/[\\s,]+/).filter(w => w.length > 2 && w.length < 30);
+                        return txt.length > 20 && words.length > 3; // Multiple potential skill names
                     });
                     if (sections.length > 0) {
                         const first = sections[0];
                         return `Found ${sections.length} elements with skills content. First element tag: ${first.tagName}, classes: ${first.className}, id: ${first.id}`;
                     }
+                    return `Skills text found in page but no matching elements found. Total text length: ${text.length}`;
                 }
-                return "Skills section not found";
+                return "Skills section not found - no Skills text in page";
             }''')
             self.log(f"DEBUG - Skills section: {skills_debug}")
         except Exception as e:
