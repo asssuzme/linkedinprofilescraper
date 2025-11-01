@@ -296,10 +296,12 @@ class LinkedInScraperV2:
         except Exception as e:
             self.log(f"DEBUG - Experience search failed: {e}")
 
-        profile_data['experiences'] = await self._extract_experiences_v2()
+        # Navigate to detail page for full experience data
+        profile_data['experiences'] = await self._extract_experiences_from_detail_page(profile_url)
 
         self.log("Extracting education...")
-        profile_data['educations'] = await self._extract_education_v2()
+        # Navigate to education detail page
+        profile_data['educations'] = await self._extract_education_from_detail_page(profile_url)
 
         self.log("Extracting skills...")
 
@@ -323,7 +325,8 @@ class LinkedInScraperV2:
         except Exception as e:
             self.log(f"DEBUG - Skills search failed: {e}")
 
-        profile_data.update(await self._extract_skills_v2())
+        # Navigate to skills detail page
+        profile_data.update(await self._extract_skills_from_detail_page(profile_url))
 
         # Contact info
         profile_data['email'] = None
@@ -614,6 +617,84 @@ class LinkedInScraperV2:
 
         return data
 
+    async def _extract_experiences_from_detail_page(self, base_profile_url: str) -> List[Dict[str, Any]]:
+        """Extract experiences by navigating to detail page where content is fully rendered"""
+        experiences = []
+
+        try:
+            # Construct detail page URL
+            detail_url = base_profile_url.rstrip('/') + '/details/experience/'
+            self.log(f"Navigating to experience detail page: {detail_url}")
+
+            # Navigate to detail page
+            await self.page.goto(detail_url, wait_until='domcontentloaded', timeout=30000)
+            await asyncio.sleep(3)  # Wait for content to load
+
+            await self.screenshot("experience_detail_page")
+
+            # On detail pages, LinkedIn renders full content
+            # Look for list items in the experience section
+            exp_items = await self.page.query_selector_all('li.pvs-list__paged-list-item, li.artdeco-list__item, ul.pvs-list > li')
+
+            self.log(f"Found {len(exp_items)} experience items on detail page")
+
+            for item in exp_items[:10]:  # Limit to first 10
+                try:
+                    # Extract title
+                    title = ""
+                    title_selectors = [
+                        'div.display-flex span[aria-hidden="true"]',
+                        'span.mr1.t-bold span',
+                        'div.t-bold span',
+                        'span[aria-hidden="true"]'
+                    ]
+                    for selector in title_selectors:
+                        title_elem = await item.query_selector(selector)
+                        if title_elem:
+                            title = await extract_text(title_elem)
+                            if title and len(title) > 2:
+                                break
+
+                    # Extract company
+                    company = ""
+                    company_selectors = [
+                        'span.t-14.t-normal span',
+                        'span.t-normal span[aria-hidden="true"]'
+                    ]
+                    for selector in company_selectors:
+                        company_elem = await item.query_selector(selector)
+                        if company_elem:
+                            company_text = await extract_text(company_elem)
+                            if company_text and company_text != title:
+                                company = company_text.split(' · ')[0].strip()
+                                break
+
+                    if title:  # Only add if we found a title
+                        experiences.append({
+                            'title': title,
+                            'company': company,
+                            'companyId': "",
+                            'companyUrn': "",
+                            'companyLink1': "",
+                            'logo': "",
+                            'subtitle': company,
+                            'caption': "",
+                            'breakdown': False,
+                            'subComponents': []
+                        })
+                        self.log(f"Found experience from detail page: {title} at {company}")
+                except Exception as e:
+                    self.log(f"Error parsing experience item on detail page: {e}")
+                    continue
+
+        except Exception as e:
+            self.log(f"Error navigating to experience detail page: {e}")
+            self.log("Falling back to main profile page extraction...")
+            # Fall back to original method
+            return await self._extract_experiences_v2()
+
+        return experiences
+
     async def _extract_experiences_v2(self) -> List[Dict[str, Any]]:
         """Extract work experiences"""
         experiences = []
@@ -680,6 +761,81 @@ class LinkedInScraperV2:
         
         return experiences
 
+    async def _extract_education_from_detail_page(self, base_profile_url: str) -> List[Dict[str, Any]]:
+        """Extract education by navigating to detail page"""
+        educations = []
+
+        try:
+            # Construct detail page URL
+            detail_url = base_profile_url.rstrip('/') + '/details/education/'
+            self.log(f"Navigating to education detail page: {detail_url}")
+
+            # Navigate to detail page
+            await self.page.goto(detail_url, wait_until='domcontentloaded', timeout=30000)
+            await asyncio.sleep(3)
+
+            await self.screenshot("education_detail_page")
+
+            # Look for list items
+            edu_items = await self.page.query_selector_all('li.pvs-list__paged-list-item, li.artdeco-list__item, ul.pvs-list > li')
+
+            self.log(f"Found {len(edu_items)} education items on detail page")
+
+            for item in edu_items[:10]:
+                try:
+                    # Extract school name
+                    title = ""
+                    title_selectors = [
+                        'div.display-flex span[aria-hidden="true"]',
+                        'span.mr1.t-bold span',
+                        'div.t-bold span',
+                        'span[aria-hidden="true"]'
+                    ]
+                    for selector in title_selectors:
+                        title_elem = await item.query_selector(selector)
+                        if title_elem:
+                            title = await extract_text(title_elem)
+                            if title and len(title) > 2:
+                                break
+
+                    # Extract degree
+                    subtitle = ""
+                    subtitle_selectors = [
+                        'span.t-14.t-normal span',
+                        'span.t-normal span[aria-hidden="true"]'
+                    ]
+                    for selector in subtitle_selectors:
+                        subtitle_elem = await item.query_selector(selector)
+                        if subtitle_elem:
+                            subtitle_text = await extract_text(subtitle_elem)
+                            if subtitle_text and subtitle_text != title:
+                                subtitle = subtitle_text
+                                break
+
+                    if title:
+                        educations.append({
+                            'title': title,
+                            'subtitle': subtitle,
+                            'companyId': "",
+                            'companyUrn': "",
+                            'companyLink1': "",
+                            'logo': "",
+                            'caption': "",
+                            'breakdown': False,
+                            'subComponents': []
+                        })
+                        self.log(f"Found education from detail page: {title} - {subtitle}")
+                except Exception as e:
+                    self.log(f"Error parsing education item on detail page: {e}")
+                    continue
+
+        except Exception as e:
+            self.log(f"Error navigating to education detail page: {e}")
+            self.log("Falling back to main profile page extraction...")
+            return await self._extract_education_v2()
+
+        return educations
+
     async def _extract_education_v2(self) -> List[Dict[str, Any]]:
         """Extract education"""
         educations = []
@@ -743,6 +899,67 @@ class LinkedInScraperV2:
             self.log("⚠️ No education found - section might not be visible or selectors need updating")
         
         return educations
+
+    async def _extract_skills_from_detail_page(self, base_profile_url: str) -> Dict[str, Any]:
+        """Extract skills by navigating to detail page"""
+        skills_data = {
+            'skills': [],
+            'topSkillsByEndorsements': ""
+        }
+
+        try:
+            # Construct detail page URL
+            detail_url = base_profile_url.rstrip('/') + '/details/skills/'
+            self.log(f"Navigating to skills detail page: {detail_url}")
+
+            # Navigate to detail page
+            await self.page.goto(detail_url, wait_until='domcontentloaded', timeout=30000)
+            await asyncio.sleep(3)
+
+            await self.screenshot("skills_detail_page")
+
+            # Look for list items
+            skill_items = await self.page.query_selector_all('li.pvs-list__paged-list-item, li.artdeco-list__item, ul.pvs-list > li')
+
+            self.log(f"Found {len(skill_items)} skill items on detail page")
+
+            skill_names = []
+            for item in skill_items[:15]:
+                try:
+                    # Extract skill name
+                    skill_name = ""
+                    skill_selectors = [
+                        'div.display-flex span[aria-hidden="true"]',
+                        'span.mr1.t-bold span',
+                        'div.t-bold span',
+                        'span[aria-hidden="true"]'
+                    ]
+                    for selector in skill_selectors:
+                        skill_elem = await item.query_selector(selector)
+                        if skill_elem:
+                            skill_name = await extract_text(skill_elem)
+                            if skill_name and len(skill_name) > 1 and skill_name not in skill_names:
+                                break
+
+                    if skill_name and skill_name not in skill_names:
+                        skill_names.append(skill_name)
+                        skills_data['skills'].append({
+                            'title': skill_name,
+                            'subComponents': [{'description': []}]
+                        })
+                        self.log(f"Found skill from detail page: {skill_name}")
+                except Exception as e:
+                    self.log(f"Error parsing skill item on detail page: {e}")
+                    continue
+
+            skills_data['topSkillsByEndorsements'] = ', '.join(skill_names[:5])
+
+        except Exception as e:
+            self.log(f"Error navigating to skills detail page: {e}")
+            self.log("Falling back to main profile page extraction...")
+            return await self._extract_skills_v2()
+
+        return skills_data
 
     async def _extract_skills_v2(self) -> Dict[str, Any]:
         """Extract skills"""
