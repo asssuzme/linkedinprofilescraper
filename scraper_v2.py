@@ -379,32 +379,33 @@ class LinkedInScraperV2:
             data['followers'] = 0
 
             try:
-                # Try multiple ways to find connections
-                conn_elems = await self.page.query_selector_all('span.t-black--light span.t-bold')
-                for elem in conn_elems:
+                # Try multiple ways to find connections - look for specific text patterns
+                # LinkedIn shows connections in the top card area
+                all_text_elems = await self.page.query_selector_all('span.t-bold, span.t-black--light')
+                for elem in all_text_elems:
                     text = await extract_text(elem)
-                    if text and ('connection' in text.lower() or text.replace(',', '').isdigit()):
+                    if text and 'connection' in text.lower():
                         count = parse_connections_count(text)
                         if count > 0:
                             data['connections'] = count
-                            self.log(f"Found connections: {count}")
+                            self.log(f"Found connections: {count} from text: {text}")
                             break
-            except:
-                pass
+            except Exception as e:
+                self.log(f"Error finding connections: {e}")
 
             try:
                 # Try to find followers
-                follower_elems = await self.page.query_selector_all('span.t-black--light span.t-bold')
-                for elem in follower_elems:
+                all_text_elems = await self.page.query_selector_all('span.t-bold, span.t-black--light')
+                for elem in all_text_elems:
                     text = await extract_text(elem)
                     if text and 'follower' in text.lower():
                         count = parse_connections_count(text)
                         if count > 0:
                             data['followers'] = count
-                            self.log(f"Found followers: {count}")
+                            self.log(f"Found followers: {count} from text: {text}")
                             break
-            except:
-                pass
+            except Exception as e:
+                self.log(f"Error finding followers: {e}")
 
             # Public identifier
             url_match = re.search(r'/in/([^/?]+)', self.page.url)
@@ -440,7 +441,7 @@ class LinkedInScraperV2:
                 try:
                     img_elem = await self.page.query_selector(selector)
                     if img_elem:
-                        src = extract_attribute(img_elem, 'src')
+                        src = await extract_attribute(img_elem, 'src')
                         if src and 'profile' in src.lower():
                             self.log(f"Found profile pic with selector: {selector}")
                             data['profilePic'] = src
@@ -514,12 +515,12 @@ class LinkedInScraperV2:
                     # Job title
                     title_elem = await first_exp.query_selector('div[class*="display-flex"] span[aria-hidden="true"]')
                     if title_elem:
-                        data['jobTitle'] = extract_text(title_elem)
+                        data['jobTitle'] = await extract_text(title_elem)
 
                     # Company name
                     company_elem = await first_exp.query_selector('span.t-14 span[aria-hidden="true"]')
                     if company_elem:
-                        company_text = extract_text(company_elem)
+                        company_text = await extract_text(company_elem)
                         data['companyName'] = company_text.split(' · ')[0].strip() if ' · ' in company_text else company_text
 
                     self.log(f"Found current job: {data['jobTitle']} at {data['companyName']}")
@@ -529,109 +530,228 @@ class LinkedInScraperV2:
         return data
 
     async def _extract_experiences_v2(self) -> List[Dict[str, Any]]:
-        """Extract work experiences"""
+        """Extract work experiences with better selectors"""
         experiences = []
 
         try:
+            # Try to find and click "Show all experiences" button
+            try:
+                show_all_btn = await self.page.query_selector('section:has(div#experience) button:has-text("Show all")')
+                if show_all_btn:
+                    await show_all_btn.click()
+                    await asyncio.sleep(1)
+                    self.log("Clicked 'Show all experiences'")
+            except:
+                pass
+
             exp_section = await self.page.query_selector('section:has(div#experience)')
-            if exp_section:
+            if not exp_section:
+                self.log("Experience section not found")
+                return experiences
+
+            # Try multiple selectors for experience items
+            exp_items = await exp_section.query_selector_all('ul > li.artdeco-list__item')
+            if not exp_items:
                 exp_items = await exp_section.query_selector_all('li')
-                self.log(f"Found {len(exp_items)} experience items")
 
-                for item in exp_items[:5]:  # Limit to first 5
-                    try:
-                        title_elem = await item.query_selector('div span[aria-hidden="true"]')
-                        company_elem = await item.query_selector('span.t-14 span[aria-hidden="true"]')
+            self.log(f"Found {len(exp_items)} experience items")
 
+            for item in exp_items[:10]:  # Limit to first 10
+                try:
+                    # Try multiple selectors for title
+                    title = ""
+                    title_selectors = [
+                        'div[class*="display-flex"] span[aria-hidden="true"]',
+                        'span[aria-hidden="true"]',
+                        'div.t-bold span'
+                    ]
+                    for selector in title_selectors:
+                        title_elem = await item.query_selector(selector)
                         if title_elem:
-                            title = extract_text(title_elem)
-                            company = extract_text(company_elem) if company_elem else ""
+                            title = await extract_text(title_elem)
+                            if title:
+                                break
 
-                            experiences.append({
-                                'title': title,
-                                'company': company,
-                                'companyId': "",
-                                'companyUrn': "",
-                                'companyLink1': "",
-                                'logo': "",
-                                'subtitle': "",
-                                'caption': "",
-                                'breakdown': False,
-                                'subComponents': []
-                            })
-                    except:
-                        continue
+                    # Try multiple selectors for company
+                    company = ""
+                    company_selectors = [
+                        'span.t-14 span[aria-hidden="true"]',
+                        'span.t-normal span',
+                        'div.t-14 span'
+                    ]
+                    for selector in company_selectors:
+                        company_elem = await item.query_selector(selector)
+                        if company_elem:
+                            company_text = await extract_text(company_elem)
+                            if company_text and company_text != title:
+                                company = company_text.split(' · ')[0].strip() if ' · ' in company_text else company_text
+                                break
+
+                    if title:  # Only add if we found a title
+                        experiences.append({
+                            'title': title,
+                            'company': company,
+                            'companyId': "",
+                            'companyUrn': "",
+                            'companyLink1': "",
+                            'logo': "",
+                            'subtitle': company,
+                            'caption': "",
+                            'breakdown': False,
+                            'subComponents': []
+                        })
+                        self.log(f"Found experience: {title} at {company}")
+                except Exception as e:
+                    self.log(f"Error parsing experience item: {e}")
+                    continue
         except Exception as e:
             self.log(f"Error extracting experiences: {e}")
 
         return experiences
 
     async def _extract_education_v2(self) -> List[Dict[str, Any]]:
-        """Extract education"""
+        """Extract education with better selectors"""
         educations = []
 
         try:
+            # Try to find and click "Show all education" button
+            try:
+                show_all_btn = await self.page.query_selector('section:has(div#education) button:has-text("Show all")')
+                if show_all_btn:
+                    await show_all_btn.click()
+                    await asyncio.sleep(1)
+                    self.log("Clicked 'Show all education'")
+            except:
+                pass
+
             edu_section = await self.page.query_selector('section:has(div#education)')
-            if edu_section:
+            if not edu_section:
+                self.log("Education section not found")
+                return educations
+
+            # Try multiple selectors for education items
+            edu_items = await edu_section.query_selector_all('ul > li.artdeco-list__item')
+            if not edu_items:
                 edu_items = await edu_section.query_selector_all('li')
-                self.log(f"Found {len(edu_items)} education items")
 
-                for item in edu_items:
-                    try:
-                        title_elem = await item.query_selector('div span[aria-hidden="true"]')
-                        subtitle_elem = await item.query_selector('span.t-14 span[aria-hidden="true"]')
+            self.log(f"Found {len(edu_items)} education items")
 
+            for item in edu_items[:10]:  # Limit to first 10
+                try:
+                    # Try multiple selectors for school name
+                    title = ""
+                    title_selectors = [
+                        'div[class*="display-flex"] span[aria-hidden="true"]',
+                        'span[aria-hidden="true"]',
+                        'div.t-bold span'
+                    ]
+                    for selector in title_selectors:
+                        title_elem = await item.query_selector(selector)
                         if title_elem:
-                            title = extract_text(title_elem)
-                            subtitle = extract_text(subtitle_elem) if subtitle_elem else ""
+                            title = await extract_text(title_elem)
+                            if title:
+                                break
 
-                            educations.append({
-                                'title': title,
-                                'subtitle': subtitle,
-                                'companyId': "",
-                                'companyUrn': "",
-                                'companyLink1': "",
-                                'logo': "",
-                                'caption': "",
-                                'breakdown': False,
-                                'subComponents': []
-                            })
-                    except:
-                        continue
+                    # Try multiple selectors for degree/field
+                    subtitle = ""
+                    subtitle_selectors = [
+                        'span.t-14 span[aria-hidden="true"]',
+                        'span.t-normal span',
+                        'div.t-14 span'
+                    ]
+                    for selector in subtitle_selectors:
+                        subtitle_elem = await item.query_selector(selector)
+                        if subtitle_elem:
+                            subtitle_text = await extract_text(subtitle_elem)
+                            if subtitle_text and subtitle_text != title:
+                                subtitle = subtitle_text
+                                break
+
+                    if title:  # Only add if we found a school name
+                        educations.append({
+                            'title': title,
+                            'subtitle': subtitle,
+                            'companyId': "",
+                            'companyUrn': "",
+                            'companyLink1': "",
+                            'logo': "",
+                            'caption': "",
+                            'breakdown': False,
+                            'subComponents': []
+                        })
+                        self.log(f"Found education: {title} - {subtitle}")
+                except Exception as e:
+                    self.log(f"Error parsing education item: {e}")
+                    continue
         except Exception as e:
             self.log(f"Error extracting education: {e}")
 
         return educations
 
     async def _extract_skills_v2(self) -> Dict[str, Any]:
-        """Extract skills"""
+        """Extract skills with better selectors"""
         skills_data = {
             'skills': [],
             'topSkillsByEndorsements': ""
         }
 
         try:
-            skills_section = await self.page.query_selector('section:has-text("Skills")')
-            if skills_section:
+            # Try to find and click "Show all skills" button
+            try:
+                show_all_btn = await self.page.query_selector('section:has-text("Skills") button:has-text("Show all")')
+                if show_all_btn:
+                    await show_all_btn.click()
+                    await asyncio.sleep(1)
+                    self.log("Clicked 'Show all skills'")
+            except:
+                pass
+
+            # Try multiple ways to find skills section
+            skills_section = await self.page.query_selector('section:has(div#skills)')
+            if not skills_section:
+                skills_section = await self.page.query_selector('section:has-text("Skills")')
+
+            if not skills_section:
+                self.log("Skills section not found")
+                return skills_data
+
+            # Try multiple selectors for skill items
+            skill_items = await skills_section.query_selector_all('ul > li.artdeco-list__item')
+            if not skill_items:
                 skill_items = await skills_section.query_selector_all('li')
-                self.log(f"Found {len(skill_items)} skill items")
 
-                skill_names = []
-                for item in skill_items[:10]:  # Limit to top 10
-                    try:
-                        skill_elem = await item.query_selector('span[aria-hidden="true"]')
+            self.log(f"Found {len(skill_items)} skill items")
+
+            skill_names = []
+            for item in skill_items[:15]:  # Limit to top 15
+                try:
+                    # Try multiple selectors for skill name
+                    skill_name = ""
+                    skill_selectors = [
+                        'div[class*="display-flex"] span[aria-hidden="true"]',
+                        'span[aria-hidden="true"]',
+                        'div.t-bold span',
+                        'span.t-bold'
+                    ]
+                    for selector in skill_selectors:
+                        skill_elem = await item.query_selector(selector)
                         if skill_elem:
-                            skill_name = extract_text(skill_elem)
-                            if skill_name:
-                                skill_names.append(skill_name)
-                                skills_data['skills'].append({
-                                    'title': skill_name,
-                                    'subComponents': [{'description': []}]
-                                })
-                    except:
-                        continue
+                            skill_name = await extract_text(skill_elem)
+                            if skill_name and len(skill_name) > 1:  # Filter out empty or single char
+                                break
 
-                skills_data['topSkillsByEndorsements'] = ', '.join(skill_names[:5])
+                    if skill_name and skill_name not in skill_names:  # Avoid duplicates
+                        skill_names.append(skill_name)
+                        skills_data['skills'].append({
+                            'title': skill_name,
+                            'subComponents': [{'description': []}]
+                        })
+                        self.log(f"Found skill: {skill_name}")
+                except Exception as e:
+                    self.log(f"Error parsing skill item: {e}")
+                    continue
+
+            skills_data['topSkillsByEndorsements'] = ', '.join(skill_names[:5])
         except Exception as e:
             self.log(f"Error extracting skills: {e}")
 
