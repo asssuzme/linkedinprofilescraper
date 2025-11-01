@@ -16,3 +16,5 @@ output/
 playwright-state/
 # screenshots/  # Uncommented to allow pushing screenshots for debugging
 .DS_Store
+storage/
+*.pyc

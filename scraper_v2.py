@@ -176,20 +176,48 @@ class LinkedInScraperV2:
         await self._scroll_page()
         await self.screenshot("after_scroll")
 
-        # Debug: Save HTML to inspect structure
+        # Wait for skeleton loaders to disappear and content to load
+        self.log("Waiting for content to finish loading...")
         try:
-            html_content = await self.page.content()
-            debug_html_path = self.screenshot_dir / f"page_html_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
-            with open(debug_html_path, 'w', encoding='utf-8') as f:
-                f.write(html_content)
-            self.log(f"Saved page HTML for debugging: {debug_html_path}")
-        except Exception as e:
-            self.log(f"Could not save HTML: {e}")
+            # Wait for skeleton loaders to disappear (they have class "skeleton")
+            await self.page.wait_for_function(
+                '''() => {
+                    const skeletons = document.querySelectorAll('[class*="skeleton"]');
+                    return skeletons.length === 0 ||
+                           Array.from(skeletons).every(s => s.offsetParent === null);
+                }''',
+                timeout=10000
+            )
+            self.log("✓ Skeleton loaders disappeared")
+        except:
+            self.log("⚠️ Timeout waiting for skeletons to disappear, continuing anyway")
+
+        # Additional wait and scroll to trigger lazy load
+        await asyncio.sleep(3)
+        await self.page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
+        await asyncio.sleep(2)
+        await self.page.evaluate('window.scrollTo(0, 0)')
+        await asyncio.sleep(1)
+
+        await self.screenshot("content_loaded")
+        self.log("✓ Content should be loaded now")
 
         # Extract data with multiple fallbacks
         profile_data = {'linkedinUrl': profile_url}
 
         self.log("Extracting basic info...")
+
+        # DEBUG: Find and log connection count text
+        try:
+            conn_debug = await self.page.evaluate('''() => {
+                const text = document.body.textContent;
+                const match = text.match(/\\d+\\s*connection/i);
+                return match ? match[0] : "No connection text found";
+            }''')
+            self.log(f"DEBUG - Connection text in page: '{conn_debug}'")
+        except Exception as e:
+            self.log(f"DEBUG - Connection search failed: {e}")
+
         profile_data.update(await self._extract_basic_info_v2())
 
         self.log("Extracting profile pictures...")
@@ -202,12 +230,55 @@ class LinkedInScraperV2:
         profile_data.update(await self._extract_current_job_v2())
 
         self.log("Extracting experiences...")
+
+        # DEBUG: Check if Experience section exists in DOM
+        try:
+            exp_debug = await self.page.evaluate('''() => {
+                const text = document.body.textContent;
+                if (text.includes('Experience')) {
+                    // Find all section/div elements
+                    const sections = Array.from(document.querySelectorAll('section, div')).filter(el => {
+                        const txt = el.textContent || '';
+                        return txt.includes('GigFloww') || txt.includes('Co-Founder');
+                    });
+                    if (sections.length > 0) {
+                        const first = sections[0];
+                        return `Found ${sections.length} elements with experience content. First element tag: ${first.tagName}, classes: ${first.className}, id: ${first.id}`;
+                    }
+                }
+                return "Experience section not found";
+            }''')
+            self.log(f"DEBUG - Experience section: {exp_debug}")
+        except Exception as e:
+            self.log(f"DEBUG - Experience search failed: {e}")
+
         profile_data['experiences'] = await self._extract_experiences_v2()
 
         self.log("Extracting education...")
         profile_data['educations'] = await self._extract_education_v2()
 
         self.log("Extracting skills...")
+
+        # DEBUG: Check if Skills section exists in DOM
+        try:
+            skills_debug = await self.page.evaluate('''() => {
+                const text = document.body.textContent;
+                if (text.includes('Skills') || text.includes('Human Resources')) {
+                    const sections = Array.from(document.querySelectorAll('section, div')).filter(el => {
+                        const txt = el.textContent || '';
+                        return txt.includes('Human Resources') || txt.includes('Online Lead Generation');
+                    });
+                    if (sections.length > 0) {
+                        const first = sections[0];
+                        return `Found ${sections.length} elements with skills content. First element tag: ${first.tagName}, classes: ${first.className}, id: ${first.id}`;
+                    }
+                }
+                return "Skills section not found";
+            }''')
+            self.log(f"DEBUG - Skills section: {skills_debug}")
+        except Exception as e:
+            self.log(f"DEBUG - Skills search failed: {e}")
+
         profile_data.update(await self._extract_skills_v2())
 
         # Contact info
