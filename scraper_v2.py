@@ -11,7 +11,7 @@ from datetime import datetime
 
 from config import Config
 from parsers import (
-    extract_text_async, extract_attribute_async, parse_duration_to_years,
+    extract_text, extract_attribute, parse_duration_to_years,
     parse_connections_count, extract_company_id, clean_url,
     normalize_linkedin_url, extract_email_from_text, extract_phone_from_text,
     split_name
@@ -308,7 +308,7 @@ class LinkedInScraperV2:
                 try:
                     elem = await self.page.query_selector(selector)
                     if elem:
-                        full_name = await extract_text_async(elem)
+                        full_name = await extract_text(elem)
                         if full_name:
                             self.log(f"Found name with selector: {selector}")
                             break
@@ -332,7 +332,7 @@ class LinkedInScraperV2:
                 try:
                     elem = await self.page.query_selector(selector)
                     if elem:
-                        headline = await extract_text_async(elem)
+                        headline = await extract_text(elem)
                         if headline and headline != full_name:  # Make sure it's not the name
                             self.log(f"Found headline with selector: {selector}")
                             break
@@ -353,7 +353,7 @@ class LinkedInScraperV2:
                 try:
                     elem = await self.page.query_selector(selector)
                     if elem:
-                        location = await extract_text_async(elem)
+                        location = await extract_text(elem)
                         if location and ',' in location:  # Locations usually have commas
                             self.log(f"Found location with selector: {selector}")
                             break
@@ -382,7 +382,7 @@ class LinkedInScraperV2:
                 # Try multiple ways to find connections
                 conn_elems = await self.page.query_selector_all('span.t-black--light span.t-bold')
                 for elem in conn_elems:
-                    text = await extract_text_async(elem)
+                    text = await extract_text(elem)
                     if text and ('connection' in text.lower() or text.replace(',', '').isdigit()):
                         count = parse_connections_count(text)
                         if count > 0:
@@ -396,7 +396,7 @@ class LinkedInScraperV2:
                 # Try to find followers
                 follower_elems = await self.page.query_selector_all('span.t-black--light span.t-bold')
                 for elem in follower_elems:
-                    text = await extract_text_async(elem)
+                    text = await extract_text(elem)
                     if text and 'follower' in text.lower():
                         count = parse_connections_count(text)
                         if count > 0:
