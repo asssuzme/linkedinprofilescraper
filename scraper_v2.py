@@ -176,6 +176,16 @@ class LinkedInScraperV2:
         await self._scroll_page()
         await self.screenshot("after_scroll")
 
+        # Debug: Save HTML to inspect structure
+        try:
+            html_content = await self.page.content()
+            debug_html_path = self.screenshot_dir / f"page_html_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
+            with open(debug_html_path, 'w', encoding='utf-8') as f:
+                f.write(html_content)
+            self.log(f"Saved page HTML for debugging: {debug_html_path}")
+        except Exception as e:
+            self.log(f"Could not save HTML: {e}")
+
         # Extract data with multiple fallbacks
         profile_data = {'linkedinUrl': profile_url}
 
