@@ -494,10 +494,33 @@ class LinkedInScraperV2:
         experiences = []
 
         try:
-            exp_section = await self.page.query_selector('section:has(div#experience)')
+            # Try multiple selectors for experience section
+            exp_selectors = [
+                'section:has(div#experience)',
+                'section[data-section="experience"]',
+                'section#experience',
+                'section.artdeco-card:has-text("Experience")',
+                'section:has-text("Experience")',
+            ]
+            
+            exp_section = None
+            for selector in exp_selectors:
+                try:
+                    exp_section = await self.page.query_selector(selector)
+                    if exp_section:
+                        self.log(f"Found experience section with selector: {selector}")
+                        break
+                except:
+                    continue
+            
             if exp_section:
                 exp_items = await exp_section.query_selector_all('li')
                 self.log(f"Found {len(exp_items)} experience items")
+                
+                # If no items with li, try other patterns
+                if len(exp_items) == 0:
+                    exp_items = await exp_section.query_selector_all('div[class*="experience"]')
+                    self.log(f"Trying alternative selector, found {len(exp_items)} items")
 
                 for item in exp_items[:5]:  # Limit to first 5
                     try:
@@ -524,7 +547,12 @@ class LinkedInScraperV2:
                         continue
         except Exception as e:
             self.log(f"Error extracting experiences: {e}")
+            import traceback
+            self.log(f"Traceback: {traceback.format_exc()}")
 
+        if len(experiences) == 0:
+            self.log("⚠️ No experiences found - section might not be visible or selectors need updating")
+        
         return experiences
 
     async def _extract_education_v2(self) -> List[Dict[str, Any]]:
@@ -532,10 +560,32 @@ class LinkedInScraperV2:
         educations = []
 
         try:
-            edu_section = await self.page.query_selector('section:has(div#education)')
+            # Try multiple selectors for education section
+            edu_selectors = [
+                'section:has(div#education)',
+                'section[data-section="education"]',
+                'section#education',
+                'section.artdeco-card:has-text("Education")',
+                'section:has-text("Education")',
+            ]
+            
+            edu_section = None
+            for selector in edu_selectors:
+                try:
+                    edu_section = await self.page.query_selector(selector)
+                    if edu_section:
+                        self.log(f"Found education section with selector: {selector}")
+                        break
+                except:
+                    continue
+            
             if edu_section:
                 edu_items = await edu_section.query_selector_all('li')
                 self.log(f"Found {len(edu_items)} education items")
+                
+                if len(edu_items) == 0:
+                    edu_items = await edu_section.query_selector_all('div[class*="education"]')
+                    self.log(f"Trying alternative selector, found {len(edu_items)} items")
 
                 for item in edu_items:
                     try:
@@ -561,7 +611,12 @@ class LinkedInScraperV2:
                         continue
         except Exception as e:
             self.log(f"Error extracting education: {e}")
+            import traceback
+            self.log(f"Traceback: {traceback.format_exc()}")
 
+        if len(educations) == 0:
+            self.log("⚠️ No education found - section might not be visible or selectors need updating")
+        
         return educations
 
     async def _extract_skills_v2(self) -> Dict[str, Any]:
@@ -572,10 +627,32 @@ class LinkedInScraperV2:
         }
 
         try:
-            skills_section = await self.page.query_selector('section:has-text("Skills")')
+            # Try multiple selectors for skills section
+            skills_selectors = [
+                'section:has-text("Skills")',
+                'section[data-section="skills"]',
+                'section#skills',
+                'section.artdeco-card:has-text("Skills")',
+                'section:has(div#skills)',
+            ]
+            
+            skills_section = None
+            for selector in skills_selectors:
+                try:
+                    skills_section = await self.page.query_selector(selector)
+                    if skills_section:
+                        self.log(f"Found skills section with selector: {selector}")
+                        break
+                except:
+                    continue
+            
             if skills_section:
                 skill_items = await skills_section.query_selector_all('li')
                 self.log(f"Found {len(skill_items)} skill items")
+                
+                if len(skill_items) == 0:
+                    skill_items = await skills_section.query_selector_all('span[class*="skill"]')
+                    self.log(f"Trying alternative selector, found {len(skill_items)} items")
 
                 skill_names = []
                 for item in skill_items[:10]:  # Limit to top 10
@@ -595,7 +672,12 @@ class LinkedInScraperV2:
                 skills_data['topSkillsByEndorsements'] = ', '.join(skill_names[:5])
         except Exception as e:
             self.log(f"Error extracting skills: {e}")
+            import traceback
+            self.log(f"Traceback: {traceback.format_exc()}")
 
+        if len(skills_data['skills']) == 0:
+            self.log("⚠️ No skills found - section might not be visible or selectors need updating")
+        
         return skills_data
 
     async def close(self):

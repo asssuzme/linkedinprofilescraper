@@ -14,5 +14,5 @@ output/
 *.json
 !example_input.json
 playwright-state/
-screenshots/
+# screenshots/  # Uncommented to allow pushing screenshots for debugging
 .DS_Store
