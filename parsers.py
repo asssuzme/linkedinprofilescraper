@@ -5,22 +5,24 @@ import re
 from typing import Any, Dict, List, Optional
 
 
-def extract_text(element) -> str:
-    """Safely extract text from an element"""
+async def extract_text(element) -> str:
+    """Safely extract text from an element (async)"""
     if element is None:
         return ""
     try:
-        return element.text_content().strip()
+        text = await element.text_content()
+        return text.strip() if text else ""
     except:
         return ""
 
 
-def extract_attribute(element, attr: str) -> str:
-    """Safely extract attribute from an element"""
+async def extract_attribute(element, attr: str) -> str:
+    """Safely extract attribute from an element (async)"""
     if element is None:
         return ""
     try:
-        return element.get_attribute(attr) or ""
+        value = await element.get_attribute(attr)
+        return value or ""
     except:
         return ""
 

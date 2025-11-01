@@ -250,12 +250,22 @@ class LinkedInScraperV2:
 
         try:
             # Full name - try multiple selectors
+            # First wait for any h1 to appear
+            try:
+                await self.page.wait_for_selector('h1', timeout=10000, state='visible')
+            except:
+                pass
+
             name_selectors = [
                 'h1.text-heading-xlarge',
+                'h1[class*="text-heading-xlarge"]',
                 'h1[class*="text-heading"]',
                 '.pv-text-details__left-panel h1',
                 'section.top-card h1',
                 'div[data-section="profile-top-card"] h1',
+                'main h1',
+                'h1.inline.t-24.t-black.t-normal.break-words',
+                'h1',
             ]
 
             full_name = ""
@@ -263,9 +273,15 @@ class LinkedInScraperV2:
                 try:
                     elem = await self.page.query_selector(selector)
                     if elem:
-                        full_name = extract_text(elem)
-                        if full_name:
-                            self.log(f"Found name with selector: {selector}")
+                        # Try inner_text first (more reliable)
+                        try:
+                            full_name = await elem.inner_text()
+                            full_name = full_name.strip()
+                        except:
+                            full_name = await extract_text(elem)
+                        
+                        if full_name and len(full_name) > 1:
+                            self.log(f"Found name with selector: {selector} -> {full_name}")
                             break
                 except:
                     continue
@@ -288,7 +304,7 @@ class LinkedInScraperV2:
                 try:
                     elem = await self.page.query_selector(selector)
                     if elem:
-                        headline = extract_text(elem)
+                        headline = await extract_text(elem)
                         if headline and headline != full_name:  # Make sure it's not the name
                             self.log(f"Found headline with selector: {selector}")
                             break
@@ -310,7 +326,7 @@ class LinkedInScraperV2:
                 try:
                     elem = await self.page.query_selector(selector)
                     if elem:
-                        location = extract_text(elem)
+                        location = await extract_text(elem)
                         if location and ',' in location:  # Locations usually have commas
                             self.log(f"Found location with selector: {selector}")
                             break
@@ -385,7 +401,7 @@ class LinkedInScraperV2:
                 try:
                     img_elem = await self.page.query_selector(selector)
                     if img_elem:
-                        src = extract_attribute(img_elem, 'src')
+                        src = await extract_attribute(img_elem, 'src')
                         if src and 'profile' in src.lower():
                             self.log(f"Found profile pic with selector: {selector}")
                             data['profilePic'] = src
@@ -424,7 +440,7 @@ class LinkedInScraperV2:
                 try:
                     elem = await self.page.query_selector(selector)
                     if elem:
-                        text = extract_text(elem)
+                        text = await extract_text(elem)
                         if text and len(text) > 20:  # About sections are usually longer
                             self.log(f"Found about with selector: {selector}")
                             return text
@@ -459,12 +475,12 @@ class LinkedInScraperV2:
                     # Job title
                     title_elem = await first_exp.query_selector('div[class*="display-flex"] span[aria-hidden="true"]')
                     if title_elem:
-                        data['jobTitle'] = extract_text(title_elem)
+                        data['jobTitle'] = await extract_text(title_elem)
 
                     # Company name
                     company_elem = await first_exp.query_selector('span.t-14 span[aria-hidden="true"]')
                     if company_elem:
-                        company_text = extract_text(company_elem)
+                        company_text = await extract_text(company_elem)
                         data['companyName'] = company_text.split(' · ')[0].strip() if ' · ' in company_text else company_text
 
                     self.log(f"Found current job: {data['jobTitle']} at {data['companyName']}")
@@ -489,8 +505,8 @@ class LinkedInScraperV2:
                         company_elem = await item.query_selector('span.t-14 span[aria-hidden="true"]')
 
                         if title_elem:
-                            title = extract_text(title_elem)
-                            company = extract_text(company_elem) if company_elem else ""
+                            title = await extract_text(title_elem)
+                            company = await extract_text(company_elem) if company_elem else ""
 
                             experiences.append({
                                 'title': title,
@@ -527,8 +543,8 @@ class LinkedInScraperV2:
                         subtitle_elem = await item.query_selector('span.t-14 span[aria-hidden="true"]')
 
                         if title_elem:
-                            title = extract_text(title_elem)
-                            subtitle = extract_text(subtitle_elem) if subtitle_elem else ""
+                            title = await extract_text(title_elem)
+                            subtitle = await extract_text(subtitle_elem) if subtitle_elem else ""
 
                             educations.append({
                                 'title': title,
@@ -566,7 +582,7 @@ class LinkedInScraperV2:
                     try:
                         skill_elem = await item.query_selector('span[aria-hidden="true"]')
                         if skill_elem:
-                            skill_name = extract_text(skill_elem)
+                            skill_name = await extract_text(skill_elem)
                             if skill_name:
                                 skill_names.append(skill_name)
                                 skills_data['skills'].append({
