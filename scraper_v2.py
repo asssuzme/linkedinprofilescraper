@@ -206,6 +206,18 @@ class LinkedInScraperV2:
         profile_data = {'linkedinUrl': profile_url}
 
         self.log("Extracting basic info...")
+
+        # DEBUG: Find and log connection count text
+        try:
+            conn_debug = await self.page.evaluate('''() => {
+                const text = document.body.textContent;
+                const match = text.match(/\\d+\\s*connection/i);
+                return match ? match[0] : "No connection text found";
+            }''')
+            self.log(f"DEBUG - Connection text in page: '{conn_debug}'")
+        except Exception as e:
+            self.log(f"DEBUG - Connection search failed: {e}")
+
         profile_data.update(await self._extract_basic_info_v2())
 
         self.log("Extracting profile pictures...")
@@ -218,12 +230,55 @@ class LinkedInScraperV2:
         profile_data.update(await self._extract_current_job_v2())
 
         self.log("Extracting experiences...")
+
+        # DEBUG: Check if Experience section exists in DOM
+        try:
+            exp_debug = await self.page.evaluate('''() => {
+                const text = document.body.textContent;
+                if (text.includes('Experience')) {
+                    // Find all section/div elements
+                    const sections = Array.from(document.querySelectorAll('section, div')).filter(el => {
+                        const txt = el.textContent || '';
+                        return txt.includes('GigFloww') || txt.includes('Co-Founder');
+                    });
+                    if (sections.length > 0) {
+                        const first = sections[0];
+                        return `Found ${sections.length} elements with experience content. First element tag: ${first.tagName}, classes: ${first.className}, id: ${first.id}`;
+                    }
+                }
+                return "Experience section not found";
+            }''')
+            self.log(f"DEBUG - Experience section: {exp_debug}")
+        except Exception as e:
+            self.log(f"DEBUG - Experience search failed: {e}")
+
         profile_data['experiences'] = await self._extract_experiences_v2()
 
         self.log("Extracting education...")
         profile_data['educations'] = await self._extract_education_v2()
 
         self.log("Extracting skills...")
+
+        # DEBUG: Check if Skills section exists in DOM
+        try:
+            skills_debug = await self.page.evaluate('''() => {
+                const text = document.body.textContent;
+                if (text.includes('Skills') || text.includes('Human Resources')) {
+                    const sections = Array.from(document.querySelectorAll('section, div')).filter(el => {
+                        const txt = el.textContent || '';
+                        return txt.includes('Human Resources') || txt.includes('Online Lead Generation');
+                    });
+                    if (sections.length > 0) {
+                        const first = sections[0];
+                        return `Found ${sections.length} elements with skills content. First element tag: ${first.tagName}, classes: ${first.className}, id: ${first.id}`;
+                    }
+                }
+                return "Skills section not found";
+            }''')
+            self.log(f"DEBUG - Skills section: {skills_debug}")
+        except Exception as e:
+            self.log(f"DEBUG - Skills search failed: {e}")
+
         profile_data.update(await self._extract_skills_v2())
 
         # Contact info
