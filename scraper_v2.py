@@ -632,11 +632,59 @@ class LinkedInScraperV2:
 
             await self.screenshot("experience_detail_page")
 
+            # DEBUG: Analyze HTML structure on detail page
+            html_debug = await self.page.evaluate('''() => {
+                // Find all list items with various selectors
+                const selectors = [
+                    'li.pvs-list__paged-list-item',
+                    'li.artdeco-list__item',
+                    'ul.pvs-list > li',
+                    'li',
+                    'ul > li',
+                    'div[data-view-name="profile-component-entity"]'
+                ];
+
+                const results = {};
+                selectors.forEach(sel => {
+                    const items = document.querySelectorAll(sel);
+                    results[sel] = items.length;
+                });
+
+                // Get first 3 LI elements and log their structure
+                const allLis = Array.from(document.querySelectorAll('li'));
+                const sampleStructures = allLis.slice(0, 3).map(li => ({
+                    tagName: li.tagName,
+                    className: li.className,
+                    id: li.id,
+                    innerHTML: li.innerHTML.substring(0, 300),
+                    textContent: li.textContent.substring(0, 200)
+                }));
+
+                return {
+                    selectorCounts: results,
+                    totalLis: allLis.length,
+                    sampleStructures: sampleStructures,
+                    bodyText: document.body.textContent.substring(0, 500)
+                };
+            }''')
+
+            self.log("=== EXPERIENCE DETAIL PAGE HTML DEBUG ===")
+            self.log(f"Selector counts: {html_debug['selectorCounts']}")
+            self.log(f"Total <li> elements: {html_debug['totalLis']}")
+            self.log(f"First <li> sample structure:")
+            for i, sample in enumerate(html_debug.get('sampleStructures', [])[:1]):
+                self.log(f"  LI #{i+1}:")
+                self.log(f"    Class: {sample['className']}")
+                self.log(f"    ID: {sample['id']}")
+                self.log(f"    Text: {sample['textContent'][:150]}")
+                self.log(f"    HTML: {sample['innerHTML'][:200]}")
+            self.log("==========================================")
+
             # On detail pages, LinkedIn renders full content
             # Look for list items in the experience section
             exp_items = await self.page.query_selector_all('li.pvs-list__paged-list-item, li.artdeco-list__item, ul.pvs-list > li')
 
-            self.log(f"Found {len(exp_items)} experience items on detail page")
+            self.log(f"Found {len(exp_items)} experience items on detail page using current selectors")
 
             for item in exp_items[:10]:  # Limit to first 10
                 try:
@@ -776,10 +824,51 @@ class LinkedInScraperV2:
 
             await self.screenshot("education_detail_page")
 
+            # DEBUG: Analyze HTML structure on detail page
+            html_debug = await self.page.evaluate('''() => {
+                const selectors = [
+                    'li.pvs-list__paged-list-item',
+                    'li.artdeco-list__item',
+                    'ul.pvs-list > li',
+                    'li',
+                    'ul > li',
+                    'div[data-view-name="profile-component-entity"]'
+                ];
+
+                const results = {};
+                selectors.forEach(sel => {
+                    const items = document.querySelectorAll(sel);
+                    results[sel] = items.length;
+                });
+
+                const allLis = Array.from(document.querySelectorAll('li'));
+                const sampleStructures = allLis.slice(0, 3).map(li => ({
+                    tagName: li.tagName,
+                    className: li.className,
+                    id: li.id,
+                    innerHTML: li.innerHTML.substring(0, 300),
+                    textContent: li.textContent.substring(0, 200)
+                }));
+
+                return {
+                    selectorCounts: results,
+                    totalLis: allLis.length,
+                    sampleStructures: sampleStructures
+                };
+            }''')
+
+            self.log("=== EDUCATION DETAIL PAGE HTML DEBUG ===")
+            self.log(f"Selector counts: {html_debug['selectorCounts']}")
+            self.log(f"Total <li> elements: {html_debug['totalLis']}")
+            if html_debug.get('sampleStructures'):
+                self.log(f"First <li> class: {html_debug['sampleStructures'][0]['className']}")
+                self.log(f"First <li> text: {html_debug['sampleStructures'][0]['textContent'][:100]}")
+            self.log("=========================================")
+
             # Look for list items
             edu_items = await self.page.query_selector_all('li.pvs-list__paged-list-item, li.artdeco-list__item, ul.pvs-list > li')
 
-            self.log(f"Found {len(edu_items)} education items on detail page")
+            self.log(f"Found {len(edu_items)} education items on detail page using current selectors")
 
             for item in edu_items[:10]:
                 try:
@@ -918,10 +1007,51 @@ class LinkedInScraperV2:
 
             await self.screenshot("skills_detail_page")
 
+            # DEBUG: Analyze HTML structure on detail page
+            html_debug = await self.page.evaluate('''() => {
+                const selectors = [
+                    'li.pvs-list__paged-list-item',
+                    'li.artdeco-list__item',
+                    'ul.pvs-list > li',
+                    'li',
+                    'ul > li',
+                    'div[data-view-name="profile-component-entity"]'
+                ];
+
+                const results = {};
+                selectors.forEach(sel => {
+                    const items = document.querySelectorAll(sel);
+                    results[sel] = items.length;
+                });
+
+                const allLis = Array.from(document.querySelectorAll('li'));
+                const sampleStructures = allLis.slice(0, 3).map(li => ({
+                    tagName: li.tagName,
+                    className: li.className,
+                    id: li.id,
+                    innerHTML: li.innerHTML.substring(0, 300),
+                    textContent: li.textContent.substring(0, 200)
+                }));
+
+                return {
+                    selectorCounts: results,
+                    totalLis: allLis.length,
+                    sampleStructures: sampleStructures
+                };
+            }''')
+
+            self.log("=== SKILLS DETAIL PAGE HTML DEBUG ===")
+            self.log(f"Selector counts: {html_debug['selectorCounts']}")
+            self.log(f"Total <li> elements: {html_debug['totalLis']}")
+            if html_debug.get('sampleStructures'):
+                self.log(f"First <li> class: {html_debug['sampleStructures'][0]['className']}")
+                self.log(f"First <li> text: {html_debug['sampleStructures'][0]['textContent'][:100]}")
+            self.log("======================================")
+
             # Look for list items
             skill_items = await self.page.query_selector_all('li.pvs-list__paged-list-item, li.artdeco-list__item, ul.pvs-list > li')
 
-            self.log(f"Found {len(skill_items)} skill items on detail page")
+            self.log(f"Found {len(skill_items)} skill items on detail page using current selectors")
 
             skill_names = []
             for item in skill_items[:15]:
